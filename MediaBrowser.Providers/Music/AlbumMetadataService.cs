@@ -109,14 +109,14 @@ public class AlbumMetadataService : MetadataService<MusicAlbum, AlbumInfo>
 
         var albumArtists = songs
             .SelectMany(i => i.AlbumArtists)
-            .GroupBy(i => i)
+            .GroupBy(i => i, StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Count())
             .Select(g => g.Key)
             .ToArray();
 
         updateType |= SetProviderIdFromSongs(item, songs, MetadataProvider.MusicBrainzAlbumArtist);
 
-        if (!item.AlbumArtists.SequenceEqual(albumArtists, StringComparer.OrdinalIgnoreCase))
+        if (!item.AlbumArtists.SequenceEqual(albumArtists, StringComparer.Ordinal))
         {
             item.AlbumArtists = albumArtists;
             updateType |= ItemUpdateType.MetadataEdit;
@@ -131,12 +131,12 @@ public class AlbumMetadataService : MetadataService<MusicAlbum, AlbumInfo>
 
         var artists = songs
             .SelectMany(i => i.Artists)
-            .GroupBy(i => i)
+            .GroupBy(i => i, StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Count())
             .Select(g => g.Key)
             .ToArray();
 
-        if (!item.Artists.SequenceEqual(artists, StringComparer.OrdinalIgnoreCase))
+        if (!item.Artists.SequenceEqual(artists, StringComparer.Ordinal))
         {
             item.Artists = artists;
             updateType |= ItemUpdateType.MetadataEdit;
@@ -200,20 +200,26 @@ public class AlbumMetadataService : MetadataService<MusicAlbum, AlbumInfo>
 
             foreach (var albumArtist in item.AlbumArtists)
             {
-                PeopleHelper.AddPerson(people, new PersonInfo
+                if (!string.IsNullOrWhiteSpace(albumArtist))
                 {
-                    Name = albumArtist.Trim(),
-                    Type = PersonKind.AlbumArtist
-                });
+                    PeopleHelper.AddPerson(people, new PersonInfo
+                    {
+                        Name = albumArtist,
+                        Type = PersonKind.AlbumArtist
+                    });
+                }
             }
 
             foreach (var artist in item.Artists)
             {
-                PeopleHelper.AddPerson(people, new PersonInfo
+                if (!string.IsNullOrWhiteSpace(artist))
                 {
-                    Name = artist.Trim(),
-                    Type = PersonKind.Artist
-                });
+                    PeopleHelper.AddPerson(people, new PersonInfo
+                    {
+                        Name = artist,
+                        Type = PersonKind.Artist
+                    });
+                }
             }
 
             LibraryManager.UpdatePeople(item, people);
