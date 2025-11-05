@@ -95,6 +95,7 @@ public class PeopleRepository(IDbContextFactory<JellyfinDbContext> dbProvider, I
             .ToArray();
 
         var toAdd = people
+            .Where(e => e.Type is not PersonKind.Artist && e.Type is not PersonKind.AlbumArtist)
             .Where(e => !existingPersons.Any(f => f.Name == e.Name && f.PersonType == e.Type.ToString()))
             .Select(Map);
         context.Peoples.AddRange(toAdd);
@@ -104,33 +105,40 @@ public class PeopleRepository(IDbContextFactory<JellyfinDbContext> dbProvider, I
 
         var existingMaps = context.PeopleBaseItemMap.Include(e => e.People).Where(e => e.ItemId == itemId).ToList();
 
-        var maxSortOrder = Math.Max(
-            context.PeopleBaseItemMap.Include(e => e.People).Where(e => e.ItemId == itemId && e.People.PersonType == PersonKind.Actor.ToString()).Max(e => (int?)e.SortOrder) ?? 0,
-            people.Where(p => p.Type == PersonKind.Actor && p.SortOrder.HasValue).Max(p => (int?)p.SortOrder) ?? 0);
+        var listOrder = 0;
 
         foreach (var person in people)
         {
+            if (person.Type == PersonKind.Artist || person.Type == PersonKind.AlbumArtist)
+            {
+                continue;
+            }
+
             var entityPerson = personsEntities.First(e => e.Name == person.Name && e.PersonType == person.Type.ToString());
             var existingMap = existingMaps.FirstOrDefault(e => e.People.Name == person.Name && e.People.PersonType == person.Type.ToString() && e.Role == person.Role);
             if (existingMap is null)
             {
-                var sortOrder = person.Type == PersonKind.Actor ? (person.SortOrder ?? ++maxSortOrder) : person.SortOrder;
                 context.PeopleBaseItemMap.Add(new PeopleBaseItemMap()
                 {
                     Item = null!,
                     ItemId = itemId,
                     People = null!,
                     PeopleId = entityPerson.Id,
-                    ListOrder = sortOrder,
-                    SortOrder = sortOrder,
+                    ListOrder = listOrder,
+                    SortOrder = person.SortOrder,
                     Role = person.Role
                 });
             }
             else
             {
+                // Update the order for existing mappings
+                existingMap.ListOrder = listOrder;
+                existingMap.SortOrder = person.SortOrder;
                 // person mapping already exists so remove from list
                 existingMaps.Remove(existingMap);
             }
+
+            listOrder++;
         }
 
         context.PeopleBaseItemMap.RemoveRange(existingMaps);
