@@ -142,12 +142,37 @@ namespace Emby.Naming.Video
                 {
                     if (group.Key)
                     {
-                        // Custom sort: 1080p always first, then others descending, then filename
-                        videos.InsertRange(0, group
-                            .OrderByDescending(x =>
-                                ResolutionRegex().Match(x.Files[0].FileNameWithoutExtension.ToString()).Value.Equals("1080p", StringComparison.OrdinalIgnoreCase) ? 1 : 0)
-                            .ThenByDescending(x => ResolutionRegex().Match(x.Files[0].FileNameWithoutExtension.ToString()).Value, new AlphanumericComparator())
-                            .ThenBy(x => x.Files[0].FileNameWithoutExtension.ToString(), new AlphanumericComparator()));
+                        var ordered = group
+                            .OrderByDescending(x => ResolutionRegex().Match(x.Files[0].FileNameWithoutExtension.ToString()).Value, new AlphanumericComparator())
+                            .ThenBy(x => x.Files[0].FileNameWithoutExtension.ToString(), new AlphanumericComparator())
+                            .ToList();
+
+                        // If a 1080p entry exists, bring the first occurrence to the front
+                        var idx1080 = ordered.FindIndex(x =>
+                            ResolutionRegex().Match(x.Files[0].FileNameWithoutExtension.ToString()).Value.Equals("1080p", StringComparison.OrdinalIgnoreCase));
+
+                        if (idx1080 > 0)
+                        {
+                            var item = ordered[idx1080];
+                            ordered.RemoveAt(idx1080);
+                            ordered.Insert(0, item);
+                        }
+
+                        // Log the ordered values for debugging: resolution and filename
+                        try
+                        {
+                            var logLines = ordered.Select(x =>
+                                $"Resolution='{ResolutionRegex().Match(x.Files[0].FileNameWithoutExtension.ToString()).Value}' File='{x.Files[0].FileNameWithoutExtension}'");
+
+                            Console.Error.WriteLine($"[VideoListResolver] Ordered group (resolution=true) for folder '{folderName}': {string.Join(", ", logLines)}");
+                        }
+                        catch (Exception ex)
+                        {
+                            // Avoid throwing from a utility method; write minimal information
+                            Console.Error.WriteLine($"[VideoListResolver] Failed to write ordered values: {ex.Message}");
+                        }
+
+                        videos.InsertRange(0, ordered);
                     }
                     else
                     {
