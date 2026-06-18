@@ -159,6 +159,7 @@ namespace Emby.Naming.Video
                     ResolutionRegex().Match(video.Files[0].FileNameWithoutExtension.ToString())
                         .Value.Equals("1080p", StringComparison.OrdinalIgnoreCase));
             }
+
             var organized = OrganizeAlternateVersions(videos, primary, folderName.ToString());
             return new List<VideoInfo> { organized };
         }
