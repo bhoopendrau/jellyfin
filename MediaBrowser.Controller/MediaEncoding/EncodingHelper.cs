@@ -4054,7 +4054,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                     mainFilters.Add(swDeintFilter);
                 }
 
-                var outFormat = doCuTonemap ? "yuv420p10le" : "yuv420p";
+                var outFormat = doCuTonemap ? "p010le" : "yuv420p";
                 var swScaleFilter = GetSwScaleFilter(state, options, vidEncoder, swpInW, swpInH, threeDFormat, reqW, reqH, reqMaxW, reqMaxH);
                 // sw scale
                 mainFilters.Add(swScaleFilter);
@@ -7864,19 +7864,26 @@ namespace MediaBrowser.Controller.MediaEncoding
                 audioTranscodeParams.Add("-acodec " + GetAudioEncoder(state));
             }
 
-            if (GetAudioEncoder(state).StartsWith("pcm_", StringComparison.Ordinal))
+            // The pcm_* encoders emit raw samples that carry no header of their own, so the header
+            // has to come from the muxer. Only force the matching raw muxer when the client actually
+            // asked for a raw container (added in #10321 for I2S/MCU clients): applying it to every
+            // pcm_* codec also strips the RIFF header from a `stream.wav` request, which then serves
+            // headerless PCM behind an audio/wav content type.
+            var audioEncoder = GetAudioEncoder(state);
+            if (audioEncoder.StartsWith("pcm_", StringComparison.Ordinal)
+                && string.Equals(state.OutputContainer, "pcm", StringComparison.OrdinalIgnoreCase))
             {
-                audioTranscodeParams.Add(string.Concat("-f ", GetAudioEncoder(state).AsSpan(4)));
-                audioTranscodeParams.Add("-ar " + state.BaseRequest.AudioBitRate);
+                audioTranscodeParams.Add(string.Concat("-f ", audioEncoder.AsSpan(4)));
             }
 
-            if (!string.Equals(outputCodec, "opus", StringComparison.OrdinalIgnoreCase))
+            var sampleRate = state.OutputAudioSampleRate;
+            if (sampleRate.HasValue)
             {
-                // opus only supports specific sampling rates
-                var sampleRate = state.OutputAudioSampleRate;
-                if (sampleRate.HasValue)
+                var sampleRateValue = sampleRate.Value;
+                if (string.Equals(outputCodec, "opus", StringComparison.OrdinalIgnoreCase))
                 {
-                    var sampleRateValue = sampleRate.Value switch
+                    // opus only supports specific sampling rates
+                    sampleRateValue = sampleRate.Value switch
                     {
                         <= 8000 => 8000,
                         <= 12000 => 12000,
@@ -7884,9 +7891,9 @@ namespace MediaBrowser.Controller.MediaEncoding
                         <= 24000 => 24000,
                         _ => 48000
                     };
-
-                    audioTranscodeParams.Add("-ar " + sampleRateValue.ToString(CultureInfo.InvariantCulture));
                 }
+
+                audioTranscodeParams.Add("-ar " + sampleRateValue.ToString(CultureInfo.InvariantCulture));
             }
 
             // Copy the movflags from GetProgressiveVideoFullCommandLine

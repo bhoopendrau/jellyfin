@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Extensions;
 using Jellyfin.LiveTv.Configuration;
+using Jellyfin.LiveTv.Listings;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
@@ -499,8 +500,13 @@ public class GuideManager : IGuideManager
                 DateCreated = DateTime.UtcNow,
                 DateModified = DateTime.UtcNow
             };
-
-            item.TrySetProviderId(EtagKey, info.Etag);
+        }
+        else if (XmlTvProgramEtag.MatchesStored(info.Etag, item.GetProviderId(EtagKey)))
+        {
+            // XMLTV ETags are generated from the final ProgramInfo fields Jellyfin consumes,
+            // so an exact match means nothing relevant changed. Other providers stay on the
+            // field-by-field update path.
+            return (item, false, false);
         }
 
         if (!string.Equals(info.ShowId, item.ShowId, StringComparison.OrdinalIgnoreCase))
@@ -626,13 +632,9 @@ public class GuideManager : IGuideManager
 
         forceUpdate |= UpdateImages(item, info);
 
-        if (isNew)
-        {
-            item.OnMetadataChanged();
-
-            return (item, true, false);
-        }
-
+        // Restore the etag wiped by `item.ProviderIds = info.ProviderIds` above and
+        // persist it on new items so they join the fast path on the next refresh
+        // instead of taking an extra full processing cycle.
         var isUpdated = forceUpdate;
         var etag = info.Etag;
         if (string.IsNullOrWhiteSpace(etag))
@@ -643,6 +645,13 @@ public class GuideManager : IGuideManager
         {
             item.SetProviderId(EtagKey, etag);
             isUpdated = true;
+        }
+
+        if (isNew)
+        {
+            item.OnMetadataChanged();
+
+            return (item, true, false);
         }
 
         if (isUpdated)
